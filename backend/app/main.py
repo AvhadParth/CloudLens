@@ -4,7 +4,9 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from pymongo.errors import PyMongoError
 
 from . import assistant, auth, data, engine, forecast, store
 
@@ -24,6 +26,15 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+
+
+@app.exception_handler(PyMongoError)
+def database_unreachable(request, error):
+    """Say clearly when MongoDB cannot be reached (wrong address, or this server's IP is not allowed in Atlas)."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "We could not reach the database. Please try again in a moment."},
+    )
 
 # Everything on this router needs a logged-in user.
 private = APIRouter(prefix="/api", dependencies=[Depends(auth.current_user)])

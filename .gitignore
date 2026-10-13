@@ -9,3 +9,4 @@ dist/
 .env
 .playwright-mcp/
 .vercel
+.env*
