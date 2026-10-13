@@ -72,6 +72,14 @@ def find_user_by_id(user_id: str) -> dict | None:
         return None
 
 
+def set_connections(user_id: str, connections: list[dict]) -> None:
+    database().users.update_one({"_id": ObjectId(user_id)}, {"$set": {"connections": connections}})
+
+
+def now() -> str:
+    return _now()
+
+
 # --- decisions on recommendations -------------------------------------------
 
 

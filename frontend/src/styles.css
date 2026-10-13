@@ -1405,6 +1405,107 @@ select:focus-visible {
   border-radius: 12px;
 }
 
+/* ---------- cloud connections ---------- */
+
+.providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.provider {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 0.6rem;
+  padding: 1.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+.provider.is-connected {
+  border-color: rgb(28 168 141 / 0.4);
+}
+
+.provider-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.4rem;
+}
+
+.provider-meta {
+  min-height: 3rem;
+  color: var(--text-2);
+  font-size: 0.95rem;
+}
+
+.provider .btn {
+  margin-top: 0.4rem;
+}
+
+.provider-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.9rem;
+  height: 2.9rem;
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.connect-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.connect-steps {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.connect-steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-3);
+}
+
+.connect-steps li.is-active {
+  color: var(--text);
+}
+
+.connect-steps li.is-done {
+  color: var(--text-2);
+}
+
+.connect-steps svg {
+  color: var(--saved-text);
+}
+
+.connect-steps .spinner {
+  width: 1rem;
+  height: 1rem;
+}
+
+.step-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  margin: 0.3rem;
+  background: var(--border-strong);
+  border-radius: 50%;
+}
+
 /* ---------- charts ---------- */
 
 .chart {

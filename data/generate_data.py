@@ -40,12 +40,13 @@ STORAGE_RATE_PER_GB_MONTH = 0.10
 # Usage-based charges (data transfer etc.) as a share of compute cost when CPU averages 50%.
 VARIABLE_COST_SHARE = 0.25
 
-TEAM_REGION = {
-    "platform": "ap-south-1",
-    "payments": "ap-south-1",
-    "search": "us-east-1",
-    "analytics": "us-east-1",
-    "mobile": "eu-west-1",
+# Each team runs on one cloud provider: (provider, region).
+TEAM_CLOUD = {
+    "platform": ("aws", "ap-south-1"),
+    "payments": ("aws", "ap-south-1"),
+    "search": ("gcp", "asia-south1"),
+    "analytics": ("gcp", "us-central1"),
+    "mobile": ("azure", "centralindia"),
 }
 
 # Compute resources: (name, type, team, environment, size, profile, created_day, idle_from_day)
@@ -249,7 +250,8 @@ def generate(seed=SEED):
                 "type": rtype,
                 "team": team,
                 "environment": env,
-                "region": TEAM_REGION[team],
+                "provider": TEAM_CLOUD[team][0],
+                "region": TEAM_CLOUD[team][1],
                 "size": size,
                 "vcpus": vcpus,
                 "memory_gb": memory_gb,
@@ -296,7 +298,8 @@ def generate(seed=SEED):
                 "type": "storage",
                 "team": team,
                 "environment": env,
-                "region": TEAM_REGION[team],
+                "provider": TEAM_CLOUD[team][0],
+                "region": TEAM_CLOUD[team][1],
                 "size": "",
                 "vcpus": np.nan,
                 "memory_gb": np.nan,

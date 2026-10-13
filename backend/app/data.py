@@ -1,5 +1,6 @@
 """Loads the simulated cloud dataset and answers the basic questions the dashboard asks."""
 
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 
@@ -7,20 +8,59 @@ import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 RECENT_DAYS = 30
-GROUP_COLUMNS = ("type", "team", "environment", "region")
+GROUP_COLUMNS = ("type", "team", "environment", "region", "provider")
+PROVIDERS = {"aws": "Amazon Web Services", "azure": "Microsoft Azure", "gcp": "Google Cloud"}
+
+# Which providers the current request may see. Set once per request from the user's
+# connections (see main.py); defaults to everything for tests and the public homepage.
+_active = ContextVar("active_providers", default=frozenset(PROVIDERS))
+
+
+def set_active(providers) -> None:
+    _active.set(frozenset(providers))
+
+
+def active() -> frozenset:
+    return _active.get()
 
 
 @lru_cache
-def load_resources() -> pd.DataFrame:
+def all_resources() -> pd.DataFrame:
     return pd.read_csv(DATA_DIR / "resources.csv", parse_dates=["created_date"])
 
 
 @lru_cache
-def load_usage() -> pd.DataFrame:
+def all_usage() -> pd.DataFrame:
     """Daily usage joined with the resource attributes used for grouping."""
     usage = pd.read_csv(DATA_DIR / "daily_usage.csv", parse_dates=["date"])
-    attributes = load_resources()[["resource_id", *GROUP_COLUMNS]]
+    attributes = all_resources()[["resource_id", *GROUP_COLUMNS]]
     return usage.merge(attributes, on="resource_id", how="left", validate="many_to_one")
+
+
+def load_resources() -> pd.DataFrame:
+    """Resources in the connected providers only."""
+    resources = all_resources()
+    return resources[resources["provider"].isin(active())]
+
+
+def load_usage() -> pd.DataFrame:
+    """Daily usage in the connected providers only."""
+    usage = all_usage()
+    return usage[usage["provider"].isin(active())]
+
+
+def provider_overview() -> list[dict]:
+    """What each provider's sample account contains, whether or not it is connected."""
+    resources, last_30 = all_resources(), recent(all_usage())
+    return [
+        {
+            "id": provider,
+            "name": name,
+            "resource_count": int((resources["provider"] == provider).sum()),
+            "monthly_cost": round(float(last_30.loc[last_30["provider"] == provider, "cost"].sum()), 2),
+        }
+        for provider, name in PROVIDERS.items()
+    ]
 
 
 def to_records(frame: pd.DataFrame) -> list[dict]:

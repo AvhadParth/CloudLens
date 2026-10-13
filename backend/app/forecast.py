@@ -9,6 +9,8 @@ For future days the capacity is held at its latest value, i.e. the forecast answ
 
 The model is compared against two baselines that need no machine learning, on periods it
 never saw during training (a rolling backtest over the last FOLDS x HOLDOUT_DAYS days).
+
+Results are cached per set of connected cloud providers, because each set is a different bill.
 """
 
 from functools import lru_cache
@@ -26,8 +28,12 @@ DEFAULT_HORIZON = 92  # 1 Oct to 31 Dec 2026: three whole calendar months
 MODEL_NAME = "Linear regression (capacity + weekday)"
 
 
-@lru_cache
 def daily() -> pd.DataFrame:
+    return _daily(data.active())
+
+
+@lru_cache
+def _daily(providers: frozenset) -> pd.DataFrame:
     """Per day: actual total cost, and the list-price cost of everything provisioned that day."""
     usage = data.load_usage().merge(data.load_resources()[["resource_id", "hourly_rate"]], on="resource_id")
     # Storage is billed at a flat daily rate, so its cost already is its provisioned cost.
@@ -70,8 +76,12 @@ def _errors(actual: np.ndarray, predicted: np.ndarray) -> dict:
     }
 
 
-@lru_cache
 def backtest() -> dict:
+    return _backtest(data.active())
+
+
+@lru_cache
+def _backtest(providers: frozenset) -> dict:
     """Hide a 60-day period, forecast it from everything before it, measure the error. Repeat."""
     series = daily()
     folds, residuals = [], []
@@ -125,8 +135,12 @@ def backtest() -> dict:
     }
 
 
-@lru_cache
 def forecast(days: int = DEFAULT_HORIZON) -> dict:
+    return _forecast(days, data.active())
+
+
+@lru_cache
+def _forecast(days: int, providers: frozenset) -> dict:
     series = daily()
     future = pd.date_range(series.index[-1] + pd.Timedelta(days=1), periods=days, freq="D")
     predicted = _model(series, future)

@@ -53,6 +53,8 @@ def test_each_user_has_their_own_decisions(client, anonymous):
     saved = client.post(f"/api/recommendations/{rid}/approve").json()
 
     anonymous.post("/api/auth/register", json={**USER, "email": "second@example.com"})
+    for provider in ("aws", "azure", "gcp"):
+        anonymous.post("/api/connections", json={"provider": provider})
     assert anonymous.get("/api/actions").json() == []
     assert anonymous.get("/api/recommendations").json()[0]["status"] == "open"
     # The second user cannot undo the first user's decision.

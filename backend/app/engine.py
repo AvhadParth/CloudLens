@@ -145,6 +145,7 @@ def recommendations() -> list[dict]:
                 "name": r["name"],
                 "type": r.type,
                 "team": r.team,
+                "provider": r.provider,
                 "environment": r.environment,
                 "size": None if pd.isna(r["size"]) else r["size"],
                 "kind_label": KIND_LABELS[result["kind"]],
@@ -159,6 +160,7 @@ def recommendations() -> list[dict]:
 def evaluate() -> dict:
     """Score the rules against the answer key written by the data generator."""
     truth = pd.read_csv(data.DATA_DIR / "ground_truth.csv")
+    truth = truth[truth["resource_id"].isin(data.load_resources()["resource_id"])].copy()
     predicted = {rec["resource_id"]: rec["kind"] for rec in recommendations()}
     truth["predicted"] = truth["resource_id"].map(predicted).fillna("none")
 

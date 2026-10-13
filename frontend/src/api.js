@@ -31,11 +31,15 @@ export const api = {
   delete: (path) => request(path, { method: 'DELETE' }),
 }
 
-/** Fetch `path` and refetch whenever `version` changes (bumped after a decision is saved). */
+/** Fetch `path` and refetch whenever `version` changes (bumped after a decision is saved). A null path waits. */
 export function useApi(path, version = 0) {
   const [state, setState] = useState({ data: null, error: null, loading: true })
 
   useEffect(() => {
+    if (!path) {
+      setState({ data: null, error: null, loading: true })
+      return undefined
+    }
     let cancelled = false
     api
       .get(path)

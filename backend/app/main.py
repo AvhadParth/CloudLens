@@ -13,7 +13,7 @@ from . import assistant, auth, data, engine, forecast, store
 app = FastAPI(
     title="CloudLens AI",
     description="Cloud cost optimization prototype running on simulated data.",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 # The Vite dev server runs on a different port, so the browser needs CORS permission.
@@ -36,12 +36,43 @@ def database_unreachable(request, error):
         content={"detail": "We could not reach the database. Please try again in a moment."},
     )
 
-# Everything on this router needs a logged-in user.
-private = APIRouter(prefix="/api", dependencies=[Depends(auth.current_user)])
+async def connected_scope(user: dict = Depends(auth.current_user)) -> dict:
+    """Limit this request to the cloud accounts the user has connected.
+
+    A new account has no connections, so it sees no data until it connects one.
+    """
+    providers = [c["provider"] for c in user.get("connections", [])]
+    if not providers:
+        raise HTTPException(status_code=409, detail="Connect a cloud account first.")
+    data.set_active(providers)
+    return user
+
+
+# Needs a logged-in user.
+account = APIRouter(prefix="/api", dependencies=[Depends(auth.current_user)])
+# Needs a logged-in user with at least one connected cloud account.
+private = APIRouter(prefix="/api", dependencies=[Depends(connected_scope)])
 
 
 class Question(BaseModel):
     question: str = Field(min_length=1, max_length=300)
+
+
+class NewConnection(BaseModel):
+    provider: Literal["aws", "azure", "gcp"]
+
+
+def connections_view(connections: list[dict]) -> list[dict]:
+    """Every provider CloudLens supports, marked with whether this user has connected it."""
+    connected = {c["provider"]: c for c in connections}
+    return [
+        {
+            **provider,
+            "connected": provider["id"] in connected,
+            "connected_at": connected.get(provider["id"], {}).get("connected_at"),
+        }
+        for provider in data.provider_overview()
+    ]
 
 
 def recommendations_with_status(user: dict) -> list[dict]:
@@ -94,6 +125,29 @@ def public_preview():
     }
 
 
+@account.get("/connections")
+def get_connections(user: dict = Depends(auth.current_user)):
+    return connections_view(user.get("connections", []))
+
+
+@account.post("/connections")
+def add_connection(body: NewConnection, user: dict = Depends(auth.current_user)):
+    """Connect a cloud account. In this prototype that links the provider's sample account;
+    no real cloud credentials are asked for or stored."""
+    connections = user.get("connections", [])
+    if body.provider not in {c["provider"] for c in connections}:
+        connections = [*connections, {"provider": body.provider, "connected_at": store.now()}]
+        store.set_connections(user["id"], connections)
+    return connections_view(connections)
+
+
+@account.delete("/connections/{provider}")
+def remove_connection(provider: Literal["aws", "azure", "gcp"], user: dict = Depends(auth.current_user)):
+    connections = [c for c in user.get("connections", []) if c["provider"] != provider]
+    store.set_connections(user["id"], connections)
+    return connections_view(connections)
+
+
 @private.get("/summary")
 def get_summary(user: dict = Depends(auth.current_user)):
     recs = recommendations_with_status(user)
@@ -121,7 +175,7 @@ def get_resources():
 @private.get("/costs")
 def get_costs(
     granularity: Literal["daily", "monthly"] = "daily",
-    group_by: Literal["type", "team", "environment", "region"] | None = None,
+    group_by: Literal["type", "team", "environment", "region", "provider"] | None = None,
 ):
     return data.cost_series(granularity, group_by)
 
@@ -172,4 +226,5 @@ def ask_assistant(body: Question, user: dict = Depends(auth.current_user)):
     return assistant.ask(body.question, user["id"])
 
 
+app.include_router(account)
 app.include_router(private)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, LOGGED_OUT_EVENT, useApi } from './api.js'
 import { Icon, Logo } from './components/art.jsx'
+import { Loader } from './components/common.jsx'
 import Landing from './pages/Landing.jsx'
 import Auth from './pages/Auth.jsx'
 import Home from './pages/Home.jsx'
@@ -9,6 +10,7 @@ import YourCloud from './pages/YourCloud.jsx'
 import Bills from './pages/Bills.jsx'
 import Ask from './pages/Ask.jsx'
 import History from './pages/History.jsx'
+import Connections from './pages/Connections.jsx'
 
 const APP_ROUTES = [
   { path: 'home', label: 'Overview', short: 'Home', icon: 'home', page: Home },
@@ -17,6 +19,7 @@ const APP_ROUTES = [
   { path: 'bills', label: 'Next bills', short: 'Bills', icon: 'bills', page: Bills },
   { path: 'ask', label: 'Ask', icon: 'ask', page: Ask },
   { path: 'history', label: 'History', icon: 'history', page: History },
+  { path: 'connections', label: 'Connections', icon: 'plug', page: Connections },
 ]
 const PUBLIC_ROUTES = ['', 'login', 'signup']
 
@@ -32,11 +35,20 @@ const go = (path) => {
 function AppShell({ user, path, onLogout }) {
   // Bumped after every approve / skip / undo so all pages refetch fresh numbers.
   const [version, setVersion] = useState(0)
-  const summary = useApi('/summary', version)
-  const recommendations = useApi('/recommendations', version)
+  // Bumped after connecting or disconnecting a cloud account.
+  const [connectionsVersion, setConnectionsVersion] = useState(0)
+  const connections = useApi('/connections', connectionsVersion)
+  // Which clouds are connected, e.g. "aws,gcp". Empty for a new account, which has nothing to show yet.
+  const scope = connections.data?.filter((c) => c.connected).map((c) => c.id).join(',') ?? ''
+  const connected = scope !== ''
+  // Dashboard data is refetched when a decision is saved or the set of connected clouds changes.
+  const dataVersion = `${version}:${scope}`
+  const summary = useApi(connected ? '/summary' : null, dataVersion)
+  const recommendations = useApi(connected ? '/recommendations' : null, dataVersion)
   const route = APP_ROUTES.find((r) => r.path === path)
   const open = recommendations.data?.filter((r) => r.status === 'open').length
-  const Page = route.page
+  const needsSetup = connections.data && !connected
+  const Page = needsSetup ? Connections : route.page
   const closeMenu = (event) => event.currentTarget.closest('[popover]').hidePopover()
 
   useEffect(() => {
@@ -56,7 +68,7 @@ function AppShell({ user, path, onLogout }) {
         <nav className="mainnav" aria-label="Main">
           <ul>
             {APP_ROUTES.map((r) => (
-              <li key={r.path} className={r.path === 'history' ? 'nav-extra' : undefined}>
+              <li key={r.path} className={r.path === 'history' || r.path === 'connections' ? 'nav-extra' : undefined}>
                 <a href={`#/${r.path}`} aria-current={r.path === path ? 'page' : undefined}>
                   <Icon name={r.icon} />
                   <span className="nav-long">{r.label}</span>
@@ -82,6 +94,9 @@ function AppShell({ user, path, onLogout }) {
             <strong>{user.name}</strong>
             {user.email}
           </p>
+          <a href="#/connections" onClick={closeMenu}>
+            Cloud connections
+          </a>
           <a href="#/history" onClick={closeMenu}>
             History
           </a>
@@ -95,13 +110,20 @@ function AppShell({ user, path, onLogout }) {
       </aside>
 
       <main id="main" tabIndex={-1}>
-        <Page
-          user={user}
-          summary={summary}
-          recommendations={recommendations}
-          version={version}
-          refresh={() => setVersion((v) => v + 1)}
-        />
+        {/* Wait until we know which clouds are connected before asking any page for data. */}
+        <Loader requests={[connections]}>
+          {() => (
+            <Page
+              user={user}
+              connections={connections}
+              welcome={needsSetup}
+              summary={summary}
+              recommendations={recommendations}
+              version={dataVersion}
+              refresh={() => (Page === Connections ? setConnectionsVersion((v) => v + 1) : setVersion((v) => v + 1))}
+            />
+          )}
+        </Loader>
         <p className="footnote">
           Practice mode: CloudLens is running on sample data. Savings are estimates, and approving a fix only records
           your choice. Nothing real is switched off.

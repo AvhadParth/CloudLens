@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../api.js'
-import { ENVIRONMENT, money, TYPE } from '../format.js'
+import { ENVIRONMENT, money, PROVIDER, TYPE } from '../format.js'
 import { Loader, Meter, PageHeader } from '../components/common.jsx'
 
 export default function YourCloud() {
@@ -56,6 +56,7 @@ export default function YourCloud() {
                     <thead>
                       <tr>
                         <th scope="col">Name</th>
+                        <th scope="col">Cloud</th>
                         <th scope="col">Team</th>
                         <th scope="col">Used for</th>
                         <th scope="col">Processor used</th>
@@ -75,6 +76,7 @@ export default function YourCloud() {
                               {r.type === 'storage' ? `${r.storage_gb.toLocaleString()} GB storage` : `${r.size} ${TYPE[r.type]}`}
                             </span>
                           </th>
+                          <td data-label="Cloud">{PROVIDER[r.provider]}</td>
                           <td data-label="Team" className="cap">
                             {r.team}
                           </td>

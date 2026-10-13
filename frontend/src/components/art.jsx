@@ -101,6 +101,7 @@ const ICONS = {
       <path d="M12 7.500V12l3 2" />
     </>
   ),
+  plug: <path d="M9 3v5M15 3v5M6.500 8h11v3.500a5.500 5.500 0 0 1-11 0zM12 17v4" />,
   check: <path d="M5 12.500l4.500 4.500L19 7.500" />,
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
 }
@@ -110,5 +111,16 @@ export function Icon({ name, size = 18 }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.800" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {ICONS[name]}
     </svg>
+  )
+}
+
+const PROVIDER_MARKS = { aws: 'AWS', azure: 'Az', gcp: 'GC' }
+
+/** A plain lettered tile for each cloud provider (not the providers' own logos). */
+export function ProviderMark({ id }) {
+  return (
+    <span className={`provider-mark provider-mark-${id}`} aria-hidden="true">
+      {PROVIDER_MARKS[id]}
+    </span>
   )
 }

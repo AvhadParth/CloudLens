@@ -39,6 +39,12 @@ Until that is filled in, the backend uses a temporary in-memory database: everyt
 
 Passwords are stored only as bcrypt hashes. The login is kept in an httpOnly cookie that page scripts cannot read.
 
+## Cloud connections
+
+A new account starts empty. On the Connections page a person links Amazon Web Services, Microsoft Azure or Google Cloud, and the dashboard then shows only the data from the clouds they connected.
+
+In this prototype each provider links a sample account (the `provider` column in `data/resources.csv`). No real cloud credentials are asked for or stored. Reading live bills through each provider's billing API is a future extension.
+
 ## Run the backend
 
 ```bash

@@ -24,7 +24,17 @@ def anonymous():
 
 @pytest.fixture
 def client():
-    """A browser that has signed up and is logged in."""
+    """A browser that has signed up, is logged in, and has connected all three clouds."""
     browser = TestClient(app)
     assert browser.post("/api/auth/register", json=USER).status_code == 201
+    for provider in ("aws", "azure", "gcp"):
+        assert browser.post("/api/connections", json={"provider": provider}).status_code == 200
+    return browser
+
+
+@pytest.fixture
+def newcomer():
+    """A browser that has signed up but not connected any cloud account yet."""
+    browser = TestClient(app)
+    assert browser.post("/api/auth/register", json={**USER, "email": "new@example.com"}).status_code == 201
     return browser

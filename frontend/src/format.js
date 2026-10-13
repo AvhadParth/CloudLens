@@ -17,3 +17,4 @@ export const timestamp = (iso) => stamp.format(new Date(iso))
 export const ENVIRONMENT = { prod: 'Live', staging: 'Pre-launch', dev: 'Development', test: 'Testing' }
 export const TYPE = { vm: 'server', database: 'database', storage: 'storage' }
 export const firstName = (name) => name.trim().split(/\s+/)[0]
+export const PROVIDER = { aws: 'AWS', azure: 'Azure', gcp: 'Google Cloud' }
