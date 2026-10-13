@@ -1,0 +1,47 @@
+resource_id,name,waste_type,note
+res-001,web-frontend-01,none,
+res-002,web-frontend-02,none,
+res-003,api-gateway-01,none,
+res-004,platform-monitoring,none,
+res-005,users-db-primary,none,
+res-006,staging-web-01,none,
+res-007,payments-api-01,none,
+res-008,payments-api-02,none,
+res-009,payments-db-primary,none,
+res-010,payments-staging-api,none,
+res-011,search-api-01,none,
+res-012,search-indexer-01,none,
+res-013,search-cache-01,none,
+res-014,search-dev-01,none,
+res-015,recommendations-api-01,none,
+res-016,analytics-etl-01,none,
+res-017,analytics-warehouse-db,none,
+res-018,analytics-cache-01,none,
+res-019,mobile-backend-01,none,
+res-020,mobile-backend-02,none,
+res-021,mobile-push-worker,none,
+res-022,mobile-ci-runner,none,
+res-023,legacy-report-server,idle,Running and billed but CPU and memory are near zero
+res-024,payments-migration-tmp,idle,Running and billed but CPU and memory are near zero
+res-025,old-campaign-landing,idle,Running and billed but CPU and memory are near zero
+res-026,search-poc-db,idle,Running and billed but CPU and memory are near zero
+res-027,platform-test-db,idle,Running and billed but CPU and memory are near zero
+res-028,analytics-dashboard-01,oversized,Peak usage is far below the capacity of the instance size
+res-029,payments-batch-recon,oversized,Peak usage is far below the capacity of the instance size
+res-030,platform-auth-service,oversized,Peak usage is far below the capacity of the instance size
+res-031,mobile-config-service,oversized,Peak usage is far below the capacity of the instance size
+res-032,search-suggest-api,oversized,Peak usage is far below the capacity of the instance size
+res-033,reporting-db-replica,oversized,Peak usage is far below the capacity of the instance size
+res-034,payments-dev-01,always_on_dev,Non-production resource used in working hours but running 24x7
+res-035,mobile-dev-01,always_on_dev,Non-production resource used in working hours but running 24x7
+res-036,analytics-notebook-dev,always_on_dev,Non-production resource used in working hours but running 24x7
+res-037,platform-qa-env,always_on_dev,Non-production resource used in working hours but running 24x7
+res-038,mobile-qa-db,always_on_dev,Non-production resource used in working hours but running 24x7
+res-039,web-assets-volume,none,
+res-040,payments-db-volume,none,
+res-041,analytics-data-lake-vol,none,
+res-042,search-index-volume,none,
+res-043,old-etl-scratch-disk,unattached_storage,Volume is not attached to any resource and has no I/O
+res-044,payments-migration-backup,unattached_storage,Volume is not attached to any resource and has no I/O
+res-045,mobile-build-cache-old,unattached_storage,Volume is not attached to any resource and has no I/O
+res-046,legacy-report-data,unattached_storage,Volume is not attached to any resource and has no I/O

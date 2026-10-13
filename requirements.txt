@@ -1,0 +1,10 @@
+# Packages the deployed backend needs (Vercel installs from this file).
+# For local development and tests use backend/requirements.txt instead.
+fastapi
+pandas
+numpy
+scikit-learn
+pymongo
+bcrypt
+PyJWT
+python-dotenv

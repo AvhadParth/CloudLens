@@ -1,0 +1,4 @@
+date,resource_id,name,multiplier
+2026-02-11,res-003,api-gateway-01,3.5
+2026-06-09,res-016,analytics-etl-01,3.0
+2026-08-15,res-019,mobile-backend-01,4.0
