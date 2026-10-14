@@ -45,6 +45,17 @@ A new account starts empty. On the Connections page a person links Amazon Web Se
 
 In this prototype each provider links a sample account (the `provider` column in `data/resources.csv`). No real cloud credentials are asked for or stored. Reading live bills through each provider's billing API is a future extension.
 
+## Showcase account
+
+For demos, `backend/seed_demo.py` sets up one account with all three clouds already connected and a short history of approved and skipped fixes, so every page has content straight away:
+
+```bash
+cd backend
+.venv/bin/python seed_demo.py --email you@example.com --password "at-least-8-characters"
+```
+
+Running it again resets that account to the same showcase state (the password is kept). Other accounts are not touched.
+
 ## Run the backend
 
 ```bash
