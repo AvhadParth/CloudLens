@@ -8,3 +8,5 @@ pymongo
 bcrypt
 PyJWT
 python-dotenv
+httpx
+cryptography

@@ -1,4 +1,5 @@
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app import store
@@ -11,6 +12,7 @@ USER = {"name": "Test User", "email": "test@example.com", "password": "correct-h
 def isolated_database(monkeypatch):
     """Every test gets its own empty in-memory database; a real MongoDB is never touched."""
     monkeypatch.delenv("MONGODB_URI", raising=False)
+    monkeypatch.setenv("CREDENTIALS_KEY", Fernet.generate_key().decode())
     store.database.cache_clear()
     yield
     store.database.cache_clear()

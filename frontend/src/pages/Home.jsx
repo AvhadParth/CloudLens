@@ -103,7 +103,7 @@ export default function Home({ user, summary, recommendations }) {
               </li>
               <li className="sticker sticker-sun">
                 <p className="sticker-label">Next month, we expect</p>
-                <p className="sticker-number">{money(s.forecast_next_30_days)}</p>
+                <p className="sticker-number">{s.forecast_next_30_days == null ? 'Soon' : money(s.forecast_next_30_days)}</p>
                 <p className="sticker-note">
                   <a href="#/bills">See the next three months</a>
                 </p>

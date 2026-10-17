@@ -10,3 +10,4 @@ mongomock
 bcrypt
 PyJWT
 python-dotenv
+cryptography

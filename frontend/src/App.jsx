@@ -38,8 +38,12 @@ function AppShell({ user, path, onLogout }) {
   // Bumped after connecting or disconnecting a cloud account.
   const [connectionsVersion, setConnectionsVersion] = useState(0)
   const connections = useApi('/connections', connectionsVersion)
+  const cloudAccounts = useApi('/cloud-accounts', connectionsVersion)
   // Which clouds are connected, e.g. "aws,gcp". Empty for a new account, which has nothing to show yet.
-  const scope = connections.data?.filter((c) => c.connected).map((c) => c.id).join(',') ?? ''
+  const scope = [
+    ...(connections.data?.filter((c) => c.connected).map((c) => c.id) ?? []),
+    ...(cloudAccounts.data?.accounts.filter((a) => a.last_synced_at).map((a) => `${a.id}@${a.last_synced_at}`) ?? []),
+  ].join(',')
   const connected = scope !== ''
   // Dashboard data is refetched when a decision is saved or the set of connected clouds changes.
   const dataVersion = `${version}:${scope}`
@@ -47,7 +51,7 @@ function AppShell({ user, path, onLogout }) {
   const recommendations = useApi(connected ? '/recommendations' : null, dataVersion)
   const route = APP_ROUTES.find((r) => r.path === path)
   const open = recommendations.data?.filter((r) => r.status === 'open').length
-  const needsSetup = connections.data && !connected
+  const needsSetup = connections.data && cloudAccounts.data && !connected
   const Page = needsSetup ? Connections : route.page
   const closeMenu = (event) => event.currentTarget.closest('[popover]').hidePopover()
 
@@ -79,7 +83,7 @@ function AppShell({ user, path, onLogout }) {
             ))}
           </ul>
         </nav>
-        <p className="sidebar-note">Practice mode. Sample data, and nothing real is changed.</p>
+        <p className="sidebar-note">Read-only. CloudLens never changes anything in your cloud.</p>
         <button type="button" className="userchip" popoverTarget="user-menu" aria-label={`Account menu for ${user.name}`}>
           <span className="avatar" aria-hidden="true">
             {user.name[0].toUpperCase()}
@@ -111,11 +115,12 @@ function AppShell({ user, path, onLogout }) {
 
       <main id="main" tabIndex={-1}>
         {/* Wait until we know which clouds are connected before asking any page for data. */}
-        <Loader requests={[connections]}>
+        <Loader requests={[connections, cloudAccounts]}>
           {() => (
             <Page
               user={user}
               connections={connections}
+              cloudAccounts={cloudAccounts}
               welcome={needsSetup}
               summary={summary}
               recommendations={recommendations}
@@ -125,8 +130,8 @@ function AppShell({ user, path, onLogout }) {
           )}
         </Loader>
         <p className="footnote">
-          Practice mode: CloudLens is running on sample data. Savings are estimates, and approving a fix only records
-          your choice. Nothing real is switched off.
+          CloudLens reads your cloud with read-only access. Savings are estimates, and approving a fix records your
+          decision; nothing in your cloud is changed. Sample accounts contain made-up data for demos.
         </p>
       </main>
     </div>

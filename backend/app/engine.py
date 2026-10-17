@@ -6,6 +6,8 @@ most one recommendation; rules are checked in order, so "idle" wins over "oversi
 All savings are estimates for a 30-day month and nothing here touches real infrastructure.
 """
 
+import re
+
 import pandas as pd
 
 from . import data
@@ -25,8 +27,10 @@ THRESHOLDS = {
     "schedule_min_hours": 20.0,  # average hours/day running to count as "always on"
 }
 NON_PRODUCTION = {"dev", "test", "staging"}
-SIZE_ORDER = ["small", "medium", "large", "xlarge", "2xlarge"]
-DOWNSIZE_PRICE_FACTOR = 0.5  # in the sample price list each size costs half the next one up
+SIZE_ORDER = ["small", "medium", "large", "xlarge", "2xlarge"]  # sizes used by the sample data
+AWS_SIZES = ["nano", "micro", "small", "medium", "large", "xlarge", "2xlarge", "4xlarge", "8xlarge", "12xlarge", "16xlarge", "24xlarge"]
+DOWNSIZE_PRICE_FACTOR = 0.5  # one size down usually costs half (used when exact prices are unknown)
+MIN_SAVING = 0.5  # findings worth less than this a month (e.g. free-tier servers) are not shown
 SCHEDULE_HOURS_PER_WEEK = 12 * 5  # 08:00-20:00, Monday to Friday
 
 KIND_LABELS = {
@@ -56,12 +60,50 @@ def resource_stats() -> pd.DataFrame:
 
 
 def _pct(value: float) -> str:
-    return f"{value:.1f}%"
+    return "Not measured" if pd.isna(value) else f"{value:.1f}%"
+
+
+def _below(value: float, limit: float) -> bool:
+    """True when a reading is under the limit. A reading the provider does not report
+    (memory on most clouds) does not block a finding; processor use is always required."""
+    return pd.isna(value) or value < limit
+
+
+def next_smaller(size) -> str | None:
+    """The next size down for sample, AWS (t3.large), Azure (Standard_D4s_v5) and Google Cloud (e2-standard-4) machines."""
+    if not isinstance(size, str) or not size:
+        return None
+    if size in SIZE_ORDER:
+        return SIZE_ORDER[SIZE_ORDER.index(size) - 1] if SIZE_ORDER.index(size) > 0 else None
+    if (match := re.fullmatch(r"([a-z0-9-]+)\.([0-9]*[a-z]+)", size)) and match.group(2) in AWS_SIZES:
+        index = AWS_SIZES.index(match.group(2))
+        return f"{match.group(1)}.{AWS_SIZES[index - 1]}" if index > 0 else None
+    if match := re.fullmatch(r"(Standard_[A-Z]+)(\d+)(.*)", size):
+        count = int(match.group(2))
+        return f"{match.group(1)}{count // 2}{match.group(3)}" if count >= 2 and count % 2 == 0 else None
+    if match := re.fullmatch(r"(.+-)(\d+)", size):
+        count = int(match.group(2))
+        return f"{match.group(1)}{count // 2}" if count >= 4 and count % 2 == 0 else None
+    return None
+
+
+def _downsize_saving(r, smaller: str) -> float:
+    """Price gap to the next size down: exact when both list prices are known, else half."""
+    from .cloud import list_price
+
+    current = list_price(r.provider, r["size"]) if r.provider in ("aws", "azure", "gcp") else None
+    cheaper = list_price(r.provider, smaller) if current else None
+    if current and cheaper and not pd.isna(r.hourly_rate):
+        return r.hourly_rate * (1 - cheaper / current) * HOURS_PER_MONTH
+    return r.hourly_rate * HOURS_PER_MONTH * (1 - DOWNSIZE_PRICE_FACTOR)
 
 
 def _check(r) -> dict | None:
     """Apply the rules to one resource. Returns the recommendation fields, or None."""
     t = THRESHOLDS
+
+    if r.type == "other" or (r.type != "storage" and pd.isna(r.cpu_avg)):
+        return None  # "Other charges", or a server with no processor readings: nothing to judge
 
     if r.type == "storage":
         if pd.isna(r.attached_to) and r.io_ops == 0:
@@ -78,7 +120,7 @@ def _check(r) -> dict | None:
             }
         return None
 
-    if r.cpu_avg < t["idle_cpu_avg"] and r.cpu_peak < t["idle_cpu_peak"] and r.memory_avg < t["idle_memory_avg"]:
+    if r.cpu_avg < t["idle_cpu_avg"] and r.cpu_peak < t["idle_cpu_peak"] and _below(r.memory_avg, t["idle_memory_avg"]):
         return {
             "kind": "idle",
             "action": "Switch it off",
@@ -110,12 +152,8 @@ def _check(r) -> dict | None:
             "saving": r.hourly_rate * HOURS_PER_MONTH * off_share,
         }
 
-    if (
-        r.cpu_peak < t["oversized_cpu_peak"]
-        and r.memory_peak < t["oversized_memory_peak"]
-        and SIZE_ORDER.index(r["size"]) > 0
-    ):
-        smaller = SIZE_ORDER[SIZE_ORDER.index(r["size"]) - 1]
+    smaller = next_smaller(r["size"])
+    if r.cpu_peak < t["oversized_cpu_peak"] and _below(r.memory_peak, t["oversized_memory_peak"]) and smaller:
         return {
             "kind": "oversized",
             "action": f"Move it to a smaller size ({r['size']} to {smaller})",
@@ -125,7 +163,7 @@ def _check(r) -> dict | None:
                 {"label": "Memory used, busiest day", "value": _pct(r.memory_peak)},
                 {"label": "Processor used, on average", "value": _pct(r.cpu_avg)},
             ],
-            "saving": r.hourly_rate * HOURS_PER_MONTH * (1 - DOWNSIZE_PRICE_FACTOR),
+            "saving": _downsize_saving(r, smaller),
         }
 
     return None
@@ -138,7 +176,9 @@ def recommendations() -> list[dict]:
         result = _check(r)
         if result is None:
             continue
-        saving = result.pop("saving")
+        saving = min(float(result.pop("saving") or 0), float(r.cost))
+        if not saving >= MIN_SAVING:
+            continue
         found.append(
             {
                 "resource_id": r.resource_id,
@@ -151,16 +191,18 @@ def recommendations() -> list[dict]:
                 "kind_label": KIND_LABELS[result["kind"]],
                 **result,
                 "current_monthly_cost": round(float(r.cost), 2),
-                "estimated_monthly_saving": round(float(min(saving, r.cost)), 2),
+                "estimated_monthly_saving": round(saving, 2),
             }
         )
     return sorted(found, key=lambda rec: rec["estimated_monthly_saving"], reverse=True)
 
 
-def evaluate() -> dict:
+def evaluate() -> dict | None:
     """Score the rules against the answer key written by the data generator."""
     truth = pd.read_csv(data.DATA_DIR / "ground_truth.csv")
     truth = truth[truth["resource_id"].isin(data.load_resources()["resource_id"])].copy()
+    if truth.empty:
+        return None  # only real accounts connected: there is no answer key to score against
     predicted = {rec["resource_id"]: rec["kind"] for rec in recommendations()}
     truth["predicted"] = truth["resource_id"].map(predicted).fillna("none")
 

@@ -1,26 +1,37 @@
 """Loads the simulated cloud dataset and answers the basic questions the dashboard asks."""
 
 from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
+
+from . import store
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 RECENT_DAYS = 30
 GROUP_COLUMNS = ("type", "team", "environment", "region", "provider")
 PROVIDERS = {"aws": "Amazon Web Services", "azure": "Microsoft Azure", "gcp": "Google Cloud"}
 
-# Which providers the current request may see. Set once per request from the user's
-# connections (see main.py); defaults to everything for tests and the public homepage.
-_active = ContextVar("active_providers", default=frozenset(PROVIDERS))
+@dataclass(frozen=True)
+class Scope:
+    """What the current request may see: sample providers, plus real accounts by (id, last sync)."""
+
+    sample: frozenset = frozenset()
+    live: tuple = ()
 
 
-def set_active(providers) -> None:
-    _active.set(frozenset(providers))
+# Set once per request from the user's connections (see main.py). Defaults to the whole
+# sample company, which is what the tests and the public homepage use.
+_active = ContextVar("scope", default=Scope(sample=frozenset(PROVIDERS)))
 
 
-def active() -> frozenset:
+def set_scope(scope: Scope) -> None:
+    _active.set(scope)
+
+
+def active() -> Scope:
     return _active.get()
 
 
@@ -37,16 +48,35 @@ def all_usage() -> pd.DataFrame:
     return usage.merge(attributes, on="resource_id", how="left", validate="many_to_one")
 
 
+@lru_cache(maxsize=64)
+def _live_frames(account_id: str, synced_at: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The tables saved by a real account's latest sync. Cached until the next sync."""
+    snapshot = store.get_snapshot(account_id) or {"resources": [], "usage": []}
+    resources = pd.DataFrame(snapshot["resources"], columns=list(all_resources().columns))
+    resources["created_date"] = pd.to_datetime(resources["created_date"], errors="coerce")
+    usage = pd.DataFrame(snapshot["usage"], columns=[c for c in all_usage().columns if c not in GROUP_COLUMNS])
+    usage["date"] = pd.to_datetime(usage["date"])
+    usage = usage.merge(resources[["resource_id", *GROUP_COLUMNS]], on="resource_id", how="left")
+    return resources, usage
+
+
+def _combine(sample: pd.DataFrame, live: list[pd.DataFrame]) -> pd.DataFrame:
+    parts = [sample, *[frame for frame in live if not frame.empty]]
+    return pd.concat(parts, ignore_index=True) if len(parts) > 1 else sample
+
+
 def load_resources() -> pd.DataFrame:
-    """Resources in the connected providers only."""
+    """Resources from the connected sample providers and real accounts."""
     resources = all_resources()
-    return resources[resources["provider"].isin(active())]
+    sample = resources[resources["provider"].isin(active().sample)]
+    return _combine(sample, [_live_frames(*key)[0] for key in active().live])
 
 
 def load_usage() -> pd.DataFrame:
-    """Daily usage in the connected providers only."""
+    """Daily usage from the connected sample providers and real accounts."""
     usage = all_usage()
-    return usage[usage["provider"].isin(active())]
+    sample = usage[usage["provider"].isin(active().sample)]
+    return _combine(sample, [_live_frames(*key)[1] for key in active().live])
 
 
 def provider_overview() -> list[dict]:
@@ -88,10 +118,10 @@ def summary() -> dict:
         "period_end": usage["date"].max().strftime("%Y-%m-%d"),
         "currency": "USD",
         "total_cost": round(usage["cost"].sum(), 2),
-        "resource_count": int(load_resources().shape[0]),
+        "resource_count": int((load_resources()["type"] != "other").sum()),
         "last_30_days_cost": round(current, 2),
         "previous_30_days_cost": round(previous, 2),
-        "change_pct": round((current - previous) / previous * 100, 2),
+        "change_pct": round((current - previous) / previous * 100, 2) if previous else 0.0,
         "last_30_days_by": {
             column: last_30.groupby(column)["cost"].sum().round(2).sort_values(ascending=False).to_dict()
             for column in GROUP_COLUMNS
@@ -113,7 +143,8 @@ def resources_with_usage() -> list[dict]:
         .round(2)
         .reset_index()
     )
-    merged = load_resources().merge(stats, on="resource_id", how="left")
+    resources = load_resources()
+    merged = resources[resources["type"] != "other"].merge(stats, on="resource_id", how="left")
     return to_records(merged.sort_values("last_30_days_cost", ascending=False))
 
 

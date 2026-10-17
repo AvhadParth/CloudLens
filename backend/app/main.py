@@ -1,19 +1,24 @@
 """CloudLens AI backend. Run from the backend folder with: uvicorn app.main:app --reload"""
 
+import os
+
 from typing import Literal
 
+import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pymongo.errors import PyMongoError
 
-from . import assistant, auth, data, engine, forecast, store
+from . import assistant, auth, data, engine, forecast, live, store
+from .cloud import CloudError, aws
 
 app = FastAPI(
     title="CloudLens AI",
     description="Cloud cost optimization prototype running on simulated data.",
-    version="0.4.0",
+    version="0.5.0",
 )
 
 # The Vite dev server runs on a different port, so the browser needs CORS permission.
@@ -36,15 +41,31 @@ def database_unreachable(request, error):
         content={"detail": "We could not reach the database. Please try again in a moment."},
     )
 
-async def connected_scope(user: dict = Depends(auth.current_user)) -> dict:
-    """Limit this request to the cloud accounts the user has connected.
-
-    A new account has no connections, so it sees no data until it connects one.
-    """
-    providers = [c["provider"] for c in user.get("connections", [])]
-    if not providers:
+def _scope_for(user: dict) -> data.Scope:
+    """Sample accounts picked on the Connections page, plus real accounts that have
+    finished at least one sync. A new account has neither, so it sees no data yet."""
+    sample = frozenset(c["provider"] for c in user.get("connections", []))
+    live = tuple(
+        (account["id"], account["last_synced_at"])
+        for account in store.list_cloud_accounts(user["id"])
+        if account.get("last_synced_at")
+    )
+    if not sample and not live:
         raise HTTPException(status_code=409, detail="Connect a cloud account first.")
-    data.set_active(providers)
+    scope = data.Scope(sample=sample, live=live)
+    data.set_scope(scope)
+    if data.load_usage().empty:
+        raise HTTPException(status_code=409, detail="Your connected accounts have no costs or servers to show yet.")
+    return scope
+
+
+async def connected_scope(user: dict = Depends(auth.current_user)) -> dict:
+    """Limit this request to the user's connected accounts.
+
+    The database work runs in a worker thread; the scope is then set here, in the request's
+    own context, so the endpoint (which runs in another worker thread) inherits it.
+    """
+    data.set_scope(await run_in_threadpool(_scope_for, user))
     return user
 
 
@@ -60,6 +81,13 @@ class Question(BaseModel):
 
 class NewConnection(BaseModel):
     provider: Literal["aws", "azure", "gcp"]
+
+
+class NewCloudAccount(BaseModel):
+    provider: Literal["aws", "azure", "gcp"]
+    label: str = Field(default="", max_length=60)
+    # Provider-specific keys; each connector checks the fields it needs.
+    credentials: dict[str, str] = Field(max_length=6)
 
 
 def connections_view(connections: list[dict]) -> list[dict]:
@@ -148,6 +176,53 @@ def remove_connection(provider: Literal["aws", "azure", "gcp"], user: dict = Dep
     return connections_view(connections)
 
 
+# --- real cloud accounts ------------------------------------------------------------
+
+
+@account.get("/cloud-accounts")
+def get_cloud_accounts(user: dict = Depends(auth.current_user)):
+    return {
+        "enabled": bool(os.environ.get("CREDENTIALS_KEY")),
+        "accounts": [live.public(a) for a in store.list_cloud_accounts(user["id"])],
+        "aws_policy": aws.POLICY,
+    }
+
+
+@account.post("/cloud-accounts", status_code=201)
+def add_cloud_account(body: NewCloudAccount, user: dict = Depends(auth.current_user)):
+    """Check the keys with the provider and save them encrypted. Call /sync next to read the data."""
+    try:
+        return live.connect(user["id"], body.provider, body.label, body.credentials)
+    except CloudError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="We could not reach the cloud provider. Try again in a minute.") from None
+
+
+@account.post("/cloud-accounts/{account_id}/sync")
+def sync_cloud_account(account_id: str, user: dict = Depends(auth.current_user)):
+    """Read the account's bill, servers, disks and usage now. Takes a few seconds to a minute."""
+    result = live.sync(user["id"], account_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Cloud account not found")
+    return result
+
+
+@account.delete("/cloud-accounts/{account_id}")
+def remove_cloud_account(account_id: str, user: dict = Depends(auth.current_user)):
+    """Forget the account: its encrypted keys and all data read from it are deleted."""
+    if not store.delete_cloud_account(user["id"], account_id):
+        raise HTTPException(status_code=404, detail="Cloud account not found")
+    return {"deleted": account_id}
+
+
+def _next_30_days() -> float | None:
+    try:
+        return forecast.forecast()["next_30_days_cost"]
+    except forecast.NotEnoughHistory:
+        return None
+
+
 @private.get("/summary")
 def get_summary(user: dict = Depends(auth.current_user)):
     recs = recommendations_with_status(user)
@@ -162,7 +237,7 @@ def get_summary(user: dict = Depends(auth.current_user)):
         "open_monthly_saving": total("open"),
         "approved_monthly_saving": total("approved"),
         "waste_by_kind": waste_by_kind(recs),
-        "forecast_next_30_days": forecast.forecast()["next_30_days_cost"],
+        "forecast_next_30_days": _next_30_days(),
     }
 
 
@@ -213,7 +288,10 @@ def get_evaluation():
 def get_forecast(days: int = forecast.DEFAULT_HORIZON):
     if not 7 <= days <= 365:
         raise HTTPException(status_code=422, detail="days must be between 7 and 365")
-    return forecast.forecast(days)
+    try:
+        return forecast.forecast(days)
+    except forecast.NotEnoughHistory as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
 
 
 @private.get("/assistant/suggestions")

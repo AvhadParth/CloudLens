@@ -32,6 +32,7 @@ def database():
     db = client[os.environ.get("MONGODB_DB", "cloudlens")]
     db.users.create_index("email", unique=True)
     db.actions.create_index([("user_id", ASCENDING), ("resource_id", ASCENDING)], unique=True)
+    db.cloud_accounts.create_index([("user_id", ASCENDING), ("provider", ASCENDING), ("account_ref", ASCENDING)], unique=True)
     return db
 
 
@@ -114,3 +115,51 @@ def delete(user_id: str, action_id: str) -> bool:
     except InvalidId:
         return False
     return result.deleted_count > 0
+
+
+# --- real cloud accounts ---------------------------------------------------------
+# cloud_accounts holds one document per connected account, with its keys encrypted.
+# cloud_snapshots holds the data read by the latest sync, keyed by the account's id.
+
+
+def create_cloud_account(user_id: str, fields: dict) -> dict | None:
+    """Returns the new account, or None if this user already connected that exact account."""
+    document = {"user_id": user_id, "status": "new", "created_at": _now(), **fields}
+    try:
+        database().cloud_accounts.insert_one(document)
+    except DuplicateKeyError:
+        return None
+    return _public(document)
+
+
+def list_cloud_accounts(user_id: str) -> list[dict]:
+    return [_public(row) for row in database().cloud_accounts.find({"user_id": user_id}).sort("created_at", 1)]
+
+
+def get_cloud_account(user_id: str, account_id: str) -> dict | None:
+    try:
+        return _public(database().cloud_accounts.find_one({"_id": ObjectId(account_id), "user_id": user_id}))
+    except InvalidId:
+        return None
+
+
+def update_cloud_account(account_id: str, fields: dict) -> None:
+    database().cloud_accounts.update_one({"_id": ObjectId(account_id)}, {"$set": fields})
+
+
+def delete_cloud_account(user_id: str, account_id: str) -> bool:
+    try:
+        result = database().cloud_accounts.delete_one({"_id": ObjectId(account_id), "user_id": user_id})
+    except InvalidId:
+        return False
+    if result.deleted_count:
+        database().cloud_snapshots.delete_one({"_id": account_id})
+    return result.deleted_count > 0
+
+
+def save_snapshot(account_id: str, user_id: str, snapshot: dict) -> None:
+    database().cloud_snapshots.replace_one({"_id": account_id}, {"_id": account_id, "user_id": user_id, **snapshot}, upsert=True)
+
+
+def get_snapshot(account_id: str) -> dict | None:
+    return database().cloud_snapshots.find_one({"_id": account_id})

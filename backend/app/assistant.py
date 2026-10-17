@@ -105,8 +105,14 @@ def answer_storage():
 
 
 def answer_forecast():
-    f = forecast.forecast()
-    model = next(r for r in forecast.backtest()["results"] if r["is_model"])
+    try:
+        f = forecast.forecast()
+    except forecast.NotEnoughHistory as error:
+        return str(error), []
+    test = forecast.backtest()
+    if test is None:
+        return f"The next 30 days should cost about {money(f['next_30_days_cost'])} if nothing changes.", []
+    model = next(r for r in test["results"] if r["is_model"])
     return (
         f"The next 30 days should cost about {money(f['next_30_days_cost'])} if nothing changes. When this "
         f"prediction was tested on past months it was off by {model['mape']:.1f}% a day on average.",
@@ -142,10 +148,15 @@ def answer_actions(user_id: str | None = None):
 
 def answer_about_data():
     s = data.summary()
+    scope = data.active()
+    parts = []
+    if scope.live:
+        parts.append(f"{len(scope.live)} connected cloud account{'s' if len(scope.live) != 1 else ''} (real bills, read with read-only keys)")
+    if scope.sample:
+        parts.append("the sample company used for demos (made-up data)")
     return (
-        f"All of it is simulated. The data set has {s['resource_count']} made-up resources with daily usage "
-        f"from {s['period_start']} to {s['period_end']}. No real cloud account is connected, savings are "
-        "estimates, and approving an action only records it in a log.",
+        f"The numbers come from {' and '.join(parts)}, covering {s['period_start']} to {s['period_end']}. "
+        "Savings are estimates, and approving a fix only records your decision: CloudLens never changes anything in your cloud.",
         [],
     )
 

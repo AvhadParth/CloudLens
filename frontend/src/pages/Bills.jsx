@@ -44,8 +44,8 @@ export default function Bills({ summary }) {
               values: [...pad(history.length), ...f.forecast.map((d) => d.cost - dailySaving)],
             })
           }
-          const model = test.results.find((r) => r.is_model)
-          const bestSimple = test.results.filter((r) => !r.is_model).sort((a, b) => a.mape - b.mape)[0]
+          const model = test?.results.find((r) => r.is_model)
+          const bestSimple = test?.results.filter((r) => !r.is_model).sort((a, b) => a.mape - b.mape)[0]
 
           return (
             <>
@@ -84,10 +84,18 @@ export default function Bills({ summary }) {
                 />
               </section>
 
+              {!test && (
+                <p className="callout">
+                  <strong>How much can you trust this?</strong> Not known yet: there is not enough billing history to
+                  test the prediction against past months. It will be tested automatically as history builds up.
+                </p>
+              )}
+              {test && (
+              <>
               <p className="callout">
-                <strong>How much can you trust this?</strong> We hid three past two-month stretches, asked CloudLens to
-                predict them, then checked. On average it was off by {percent(model.mape, 1)} a day, about{' '}
-                {moneyExact(model.mae)}.
+                <strong>How much can you trust this?</strong> We hid {test.folds.length} past {test.holdout_days}-day
+                stretches, asked CloudLens to predict them, then checked. On average it was off by{' '}
+                {percent(model.mape, 1)} a day, about {moneyExact(model.mae)}.
               </p>
 
               <details className="tech">
@@ -121,9 +129,11 @@ export default function Bills({ summary }) {
                   {model.mape < bestSimple.mape
                     ? `The model's error is ${percent((1 - model.mape / bestSimple.mape) * 100)} lower than the best simple guess.`
                     : 'The model does not beat the best simple guess on this data.'}{' '}
-                  The sample bill is much steadier than a real one, so expect bigger errors on real data.
+                  Real bills can be bumpier than past months suggest, so treat the range as a guide.
                 </p>
               </details>
+              </>
+              )}
             </>
           )
         }}

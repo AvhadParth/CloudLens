@@ -2,7 +2,7 @@
 
 AI-assisted cloud cost optimization prototype. Final-year B.Tech I.T. major project.
 
-Everything runs locally on **simulated data**. No cloud account or paid API is used, savings are estimates, and optimization actions are simulated.
+CloudLens reads real AWS, Azure and Google Cloud accounts with read-only keys, and also includes a made-up sample company for demos. Savings are estimates, and approving a fix only records the decision: CloudLens never changes anything in a cloud account.
 
 ## Layout
 
@@ -41,9 +41,25 @@ Passwords are stored only as bcrypt hashes. The login is kept in an httpOnly coo
 
 ## Cloud connections
 
-A new account starts empty. On the Connections page a person links Amazon Web Services, Microsoft Azure or Google Cloud, and the dashboard then shows only the data from the clouds they connected.
+A new account starts empty. On the Connections page a person can:
 
-In this prototype each provider links a sample account (the `provider` column in `data/resources.csv`). No real cloud credentials are asked for or stored. Reading live bills through each provider's billing API is a future extension.
+- **Connect a real cloud account** (AWS, Microsoft Azure or Google Cloud) with read-only keys. A step-by-step guide in the app shows exactly how to create them. CloudLens checks the keys with the provider, stores them encrypted, then syncs: it reads up to a year of the daily bill, the current servers and disks, and 30 days of hourly processor use. The waste checks, forecast and assistant then run on that real data.
+- **Use a sample account** (the made-up company in `data/`), for trying the app and for demos.
+
+| Provider | Keys | What is read |
+|---|---|---|
+| AWS | Access key for an IAM user with the read-only policy shown in the app | Cost Explorer (daily bill), EC2 servers and EBS disks in every region, CloudWatch processor use |
+| Azure | Service principal with the Reader role on one subscription | Cost Management (daily bill, per resource), virtual machines, managed disks, Azure Monitor processor use |
+| Google Cloud | Service account key with Compute Viewer, Monitoring Viewer (and BigQuery roles for the bill) | Compute Engine servers and disks, Cloud Monitoring processor use, the BigQuery billing export (daily bill) |
+
+How it works, briefly:
+
+- `backend/app/cloud/` has one small module per provider that calls the provider's REST API directly (AWS requests are signed with Signature Version 4, checked against Amazon's own `botocore`). No cloud SDKs are needed, which keeps the deployment small.
+- `backend/app/live.py` turns what each provider returns into the same tables as the sample data. Whole-account costs always match the real bill; per-server costs come from the provider (Azure) or from list prices (AWS, Google Cloud), and anything not matched to a server or disk appears as "Other charges".
+- `backend/app/vault.py` encrypts keys with Fernet before they are saved. The key for that lives only in `CREDENTIALS_KEY` (in `backend/.env` locally and in Vercel's settings), never in the database. Keys are never sent back to the browser, and removing an account deletes its keys and data.
+- CloudLens never changes anything in a cloud account. Approving a fix records the decision only.
+- Memory use is not read yet (most providers need an agent for it), so the memory parts of the checks are skipped for real accounts.
+- `backend/tests/fake_clouds.py` imitates all three providers' APIs so the whole flow is tested without real accounts.
 
 ## Showcase account
 

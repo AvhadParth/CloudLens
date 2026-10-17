@@ -33,7 +33,8 @@ function ConfirmDialog({ target, onCancel, onConfirm, busy }) {
             {money(target.estimated_monthly_saving)} a month.
           </p>
           <p className="dialog-note">
-            Practice mode: this only records your choice. Nothing real is switched off or deleted.
+            CloudLens only has read-only access, so this records your decision. Nothing in your cloud is switched
+            off or deleted; make the change in your cloud console when you are ready.
           </p>
           <div className="dialog-actions">
             <button type="button" className="btn btn-white" onClick={onCancel}>
@@ -217,7 +218,7 @@ export default function Save({ recommendations, refresh }) {
         }}
       </Loader>
 
-      {evaluation.data && <Accuracy evaluation={evaluation.data} />}
+      {evaluation.data?.rules && <Accuracy evaluation={evaluation.data} />}
 
       <ConfirmDialog
         target={target}

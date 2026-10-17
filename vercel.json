@@ -7,8 +7,13 @@
   "functions": {
     "api/index.py": {
       "includeFiles": "{backend/app/**,data/*.csv}",
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    }
+  ]
 }
