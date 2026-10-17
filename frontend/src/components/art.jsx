@@ -114,13 +114,50 @@ export function Icon({ name, size = 18 }) {
   )
 }
 
-const PROVIDER_MARKS = { aws: 'AWS', azure: 'Az', gcp: 'GC' }
+/* Provider logos are the companies' own marks (from Wikimedia Commons), adapted for the
+   dark theme. They are trademarks of their owners and are used only to show which clouds
+   CloudLens can read. */
+const LOGOS = {
+  aws: { mark: '/logos/aws.svg', name: 'Amazon Web Services', short: 'AWS', width: 304, height: 182 },
+  azure: { mark: '/logos/azure.svg', name: 'Microsoft Azure', short: 'Azure', width: 96, height: 96 },
+  gcp: { mark: '/logos/google-cloud.svg', name: 'Google Cloud', short: 'Google Cloud', width: 36, height: 28 },
+}
 
-/** A plain lettered tile for each cloud provider (not the providers' own logos). */
-export function ProviderMark({ id }) {
+/** The provider's logo in a square tile. */
+export function ProviderMark({ id, size = 46 }) {
+  const logo = LOGOS[id]
   return (
-    <span className={`provider-mark provider-mark-${id}`} aria-hidden="true">
-      {PROVIDER_MARKS[id]}
+    <span className={`provider-mark provider-mark-${id}`} style={{ width: size, height: size }}>
+      <img src={logo.mark} alt={logo.name} width={logo.width} height={logo.height} decoding="async" />
     </span>
+  )
+}
+
+/** Logo plus name on one line, for tables and small labels. */
+export function ProviderBadge({ id }) {
+  const logo = LOGOS[id]
+  return (
+    <span className="provider-badge">
+      <img src={logo.mark} alt="" width={logo.width} height={logo.height} decoding="async" />
+      {logo.short}
+    </span>
+  )
+}
+
+/** A row of the three logos as they appear on the companies' own sites. */
+export function ProviderLogos({ className = '' }) {
+  return (
+    <ul className={`provider-logos ${className}`} aria-label="Works with Amazon Web Services, Microsoft Azure and Google Cloud">
+      <li>
+        <img src="/logos/aws.svg" alt="Amazon Web Services" width="304" height="182" className="logo-aws" decoding="async" />
+      </li>
+      <li>
+        <img src="/logos/azure.svg" alt="" width="96" height="96" className="logo-azure-mark" decoding="async" />
+        <span>Microsoft Azure</span>
+      </li>
+      <li>
+        <img src="/logos/google-cloud-wordmark.svg" alt="Google Cloud" width="181" height="28" className="logo-gcp" decoding="async" />
+      </li>
+    </ul>
   )
 }

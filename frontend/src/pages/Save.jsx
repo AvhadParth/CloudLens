@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, useApi } from '../api.js'
 import { ENVIRONMENT, money, percent, TYPE } from '../format.js'
-import { KindIcon } from '../components/art.jsx'
+import { KindIcon, ProviderBadge } from '../components/art.jsx'
 import { Loader, PageHeader, StatusBadge } from '../components/common.jsx'
 
 const TABS = [
@@ -154,6 +154,7 @@ export default function Save({ recommendations, refresh }) {
                         <p className="rec-kind">{r.kind_label}</p>
                         <h2>{r.name}</h2>
                         <p className="rec-meta">
+                          <ProviderBadge id={r.provider} />
                           A {r.size ? `${r.size} ` : ''}
                           {TYPE[r.type]} used by the {r.team} team for {ENVIRONMENT[r.environment].toLowerCase()} work
                         </p>

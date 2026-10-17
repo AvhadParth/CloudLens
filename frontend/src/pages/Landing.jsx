@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useApi } from '../api.js'
 import { money } from '../format.js'
-import { Icon, KindIcon, LensOrb, Logo } from '../components/art.jsx'
+import { Icon, KindIcon, LensOrb, Logo, ProviderLogos, ProviderMark } from '../components/art.jsx'
 import { BillStrip } from '../components/common.jsx'
 
 const KINDS = [
@@ -24,6 +24,27 @@ const KINDS = [
     kind: 'unattached_storage',
     title: 'Storage nobody opens',
     text: 'Old disks connected to nothing. Nobody reads them, but they are billed every month.',
+  },
+]
+
+const INTEGRATIONS = [
+  {
+    id: 'aws',
+    name: 'Amazon Web Services',
+    reads: 'Daily bill from Cost Explorer, EC2 servers and EBS disks in every region, and CloudWatch processor use.',
+    keys: 'An IAM user with a short read-only policy',
+  },
+  {
+    id: 'azure',
+    name: 'Microsoft Azure',
+    reads: 'Daily bill per resource from Cost Management, virtual machines, managed disks, and Azure Monitor processor use.',
+    keys: 'A service principal with the built-in Reader role',
+  },
+  {
+    id: 'gcp',
+    name: 'Google Cloud',
+    reads: 'Daily bill from the BigQuery billing export, Compute Engine servers and disks, and Cloud Monitoring processor use.',
+    keys: 'A service account with viewer roles',
   },
 ]
 
@@ -53,6 +74,9 @@ export default function Landing({ user }) {
           CloudLens
         </a>
         <nav aria-label="Homepage">
+          <a href="#clouds" className="land-link">
+            Clouds
+          </a>
           <a href="#finds" className="land-link">
             What it finds
           </a>
@@ -89,6 +113,11 @@ export default function Landing({ user }) {
                 Log in
               </a>
             )}
+          </div>
+
+          <div className="works-with">
+            <span>Works with</span>
+            <ProviderLogos />
           </div>
 
           {p && (
@@ -129,6 +158,26 @@ export default function Landing({ user }) {
               </div>
             </div>
           )}
+        </section>
+
+        <section className="band" id="clouds">
+          <div className="band-head">
+            <h2>Connect the clouds you already use.</h2>
+            <p>A guided five-minute setup with read-only keys. CloudLens reads; it never changes anything in your account.</p>
+          </div>
+          <ul className="integrations">
+            {INTEGRATIONS.map((item) => (
+              <li key={item.id}>
+                <ProviderMark id={item.id} size={56} />
+                <h3>{item.name}</h3>
+                <p>{item.reads}</p>
+                <p className="integration-keys">
+                  <Icon name="check" />
+                  {item.keys}
+                </p>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section className="band" id="finds">
@@ -184,7 +233,7 @@ export default function Landing({ user }) {
               </li>
               <li>
                 <Icon name="check" />
-                Try fixes safely: practice mode never touches a real server
+                Approving a fix never changes anything in your cloud
               </li>
             </ul>
           </div>
@@ -216,8 +265,12 @@ export default function Landing({ user }) {
           CloudLens
         </span>
         <p>
-          A final-year B.Tech I.T. project. It runs on sample data, connects to no real cloud account, and all savings
-          are estimates.
+          A final-year B.Tech I.T. project. It reads cloud accounts with read-only keys and includes a sample company
+          for demos. All savings are estimates.
+        </p>
+        <p className="trademark">
+          Amazon Web Services, Microsoft Azure and Google Cloud and their logos are trademarks of their respective
+          owners. CloudLens is an independent student project and is not affiliated with or endorsed by them.
         </p>
       </footer>
     </div>

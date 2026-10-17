@@ -1,6 +1,6 @@
 import { useApi } from '../api.js'
 import { day, firstName, money } from '../format.js'
-import { Icon, KindIcon } from '../components/art.jsx'
+import { Icon, KindIcon, ProviderBadge } from '../components/art.jsx'
 import LineChart from '../components/LineChart.jsx'
 import { BarList, BillStrip, Loader } from '../components/common.jsx'
 
@@ -150,11 +150,29 @@ export default function Home({ user, summary, recommendations }) {
                   label="Line chart of daily cloud spending over the last twelve months"
                 />
               </section>
+              <div className="stack">
+              <section className="panel">
+                <h2>Spend by cloud</h2>
+                <p className="panel-note">Last 30 days.</p>
+                <ul className="cloud-split">
+                  {Object.entries(s.last_30_days_by.provider).map(([provider, value]) => (
+                    <li key={provider}>
+                      <ProviderBadge id={provider} />
+                      <span className="cloud-split-value">{money(value)}</span>
+                      <span className="cloud-split-share">{Math.round((value / s.last_30_days_cost) * 100)}%</span>
+                      <span className="barlist-track">
+                        <span className={`barlist-bar bar-${provider}`} style={{ width: `${(value / s.last_30_days_cost) * 100}%` }} />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
               <section className="panel">
                 <h2>Which team spends the most</h2>
                 <p className="panel-note">Last 30 days.</p>
                 <BarList rows={Object.entries(s.last_30_days_by.team).map(([label, value]) => ({ label, value }))} />
               </section>
+              </div>
             </div>
           </>
         )

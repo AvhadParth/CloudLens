@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../api.js'
-import { ENVIRONMENT, money, PROVIDER, TYPE } from '../format.js'
+import { ENVIRONMENT, money, TYPE } from '../format.js'
+import { ProviderBadge } from '../components/art.jsx'
 import { Loader, Meter, PageHeader } from '../components/common.jsx'
 
 export default function YourCloud() {
@@ -76,7 +77,9 @@ export default function YourCloud() {
                               {r.type === 'storage' ? `${r.storage_gb.toLocaleString()} GB storage` : `${r.size} ${TYPE[r.type]}`}
                             </span>
                           </th>
-                          <td data-label="Cloud">{PROVIDER[r.provider]}</td>
+                          <td data-label="Cloud">
+                            <ProviderBadge id={r.provider} />
+                          </td>
                           <td data-label="Team" className="cap">
                             {r.team}
                           </td>

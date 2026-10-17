@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
-import { Icon, LensOrb, Logo } from '../components/art.jsx'
+import { Icon, LensOrb, Logo, ProviderLogos } from '../components/art.jsx'
 
 const COPY = {
   signup: {
@@ -76,6 +76,10 @@ export default function Auth({ mode, onDone }) {
               Explains every saving in plain English
             </li>
           </ul>
+          <div className="works-with">
+            <span>Works with</span>
+            <ProviderLogos />
+          </div>
         </div>
       </aside>
 
