@@ -15,5 +15,12 @@
       "source": "/api/(.*)",
       "destination": "/api/index"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "/api/docs",
+      "permanent": false
+    }
   ]
 }

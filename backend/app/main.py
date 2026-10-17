@@ -8,7 +8,7 @@ import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from pymongo.errors import PyMongoError
 
@@ -19,6 +19,10 @@ app = FastAPI(
     title="CloudLens AI",
     description="Cloud cost optimization prototype running on simulated data.",
     version="0.5.0",
+    # Under /api so the same addresses work locally and on Vercel (which only sends /api/... to Python).
+    docs_url="/api/docs",
+    redoc_url=None,
+    openapi_url="/api/openapi.json",
 )
 
 # The Vite dev server runs on a different port, so the browser needs CORS permission.
@@ -133,6 +137,11 @@ def waste_by_kind(recs: list[dict]) -> dict:
         entry["count"] += 1
         entry["saving"] = round(entry["saving"] + rec["estimated_monthly_saving"], 2)
     return kinds
+
+
+@app.get("/docs", include_in_schema=False)
+def docs_redirect():
+    return RedirectResponse("/api/docs")
 
 
 @app.get("/api/health")

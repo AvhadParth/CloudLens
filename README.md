@@ -79,7 +79,7 @@ cd backend
 .venv/bin/uvicorn app.main:app --reload
 ```
 
-Interactive API docs: http://127.0.0.1:8000/docs
+Interactive API docs: http://127.0.0.1:8000/api/docs (on the live site: https://cloudlens-sooty.vercel.app/api/docs)
 
 ## Run the dashboard
 

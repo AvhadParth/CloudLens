@@ -2,12 +2,26 @@ import { useEffect, useState } from 'react'
 
 export const LOGGED_OUT_EVENT = 'cloudlens:logged-out'
 
-async function request(path, options) {
-  let response
+const STARTING_UP = new Set([502, 503, 504])
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function send(path, options) {
   try {
-    response = await fetch(`/api${path}`, options)
+    return await fetch(`/api${path}`, options)
   } catch {
-    throw new Error('We could not reach the server. Check that the backend is running.')
+    return null // network error
+  }
+}
+
+async function request(path, options) {
+  let response = await send(path, options)
+  // The server can take a few seconds to wake up after a quiet spell; try once more.
+  if (!response || STARTING_UP.has(response.status)) {
+    await wait(1500)
+    response = await send(path, options)
+  }
+  if (!response) {
+    throw new Error('We could not reach the server. Check your connection and try again.')
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
