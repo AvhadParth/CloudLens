@@ -94,7 +94,9 @@ def aws_handler(refuse: bool = False, block: tuple = ()):
             assert request.headers["x-amz-target"] == "AWSInsightsIndexService.GetCostAndUsage"
             if "ce:GetCostAndUsage" in block:
                 return httpx.Response(400, text='{"__type":"AccessDeniedException","Message":"User is not authorized to perform: ce:GetCostAndUsage with an explicit deny in a service control policy"}')
-            period = json.loads(request.content)["TimePeriod"]
+            query = json.loads(request.content)
+            assert query["Filter"]["Not"]["Dimensions"]["Values"] == ["Credit", "Refund"]
+            period = query["TimePeriod"]
             results = [
                 {"TimePeriod": {"Start": d.isoformat(), "End": (d + timedelta(days=1)).isoformat()},
                  "Total": {"UnblendedCost": {"Amount": str(bill(d)), "Unit": "USD"}}}

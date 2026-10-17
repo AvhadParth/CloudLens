@@ -139,6 +139,7 @@ def test_an_organization_blocking_servers_still_imports_the_bill(newcomer, monke
     created = newcomer.post("/api/cloud-accounts", json={"provider": "aws", "credentials": fake.AWS_KEYS}).json()
     synced = newcomer.post(f"/api/cloud-accounts/{created['id']}/sync").json()
     assert synced["status"] == "ready" and synced["resource_count"] == 0
+    assert not any("No full day of processor readings" in w for w in synced["warnings"])
     assert any("service control policy" in w and "organization" in w for w in synced["warnings"])
     assert 26 * 30 <= newcomer.get("/api/summary").json()["last_30_days_cost"] <= 30 * 30
     assert newcomer.get("/api/recommendations").json() == []

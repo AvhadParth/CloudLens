@@ -281,6 +281,9 @@ def _cost_explorer(http, credentials, start, end) -> tuple[dict, str]:
     body = json.dumps({
         "TimePeriod": {"Start": start.isoformat(), "End": end.isoformat()},
         "Granularity": "DAILY", "Metrics": ["UnblendedCost"],
+        # Usage cost before credits and refunds: student and promotional credits would otherwise
+        # make a real bill look like $0, and credits run out.
+        "Filter": {"Not": {"Dimensions": {"Key": "RECORD_TYPE", "Values": ["Credit", "Refund"]}}},
     })
     response = signed_request(http, credentials, service="ce", region="us-east-1", host="ce.us-east-1.amazonaws.com",
                               body=body, headers={"content-type": "application/x-amz-json-1.1",
@@ -298,7 +301,10 @@ def collect(credentials: dict, http: httpx.Client) -> Collected:
     """Read everything CloudLens can. Anything AWS refuses is skipped and explained in a warning,
     so an account with some permissions blocked still shows what is allowed."""
     start, end = usage_window()
-    warnings = ["Memory use is not measured on AWS unless the CloudWatch agent is installed, so the memory checks are skipped."]
+    warnings = [
+        "Memory use is not measured on AWS unless the CloudWatch agent is installed, so the memory checks are skipped.",
+        "Costs are shown before credits and refunds, and AWS can take up to a day to bill new usage.",
+    ]
     regions = _regions(http, credentials)
 
     def cpu_or_none(machine):

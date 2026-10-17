@@ -136,6 +136,12 @@ def build_snapshot(account: dict, collected: cloud.Collected) -> dict:
     _match_real_bill(provider, account_id, collected.daily_total, resources, usage)
 
     warnings = list(collected.warnings)
+    quiet = [m for m in collected.machines if m.cpu_hours is not None and not any(
+        row["hours_running"] for d, row in cloud.daily_usage(m.cpu_hours, start, end).items() if d < today)]
+    if quiet:
+        names = ", ".join(m.name for m in quiet[:3]) + (" and others" if len(quiet) > 3 else "")
+        warnings.append(f"No full day of processor readings yet for {names} (new or switched off). "
+                        "CloudLens checks for waste once a server has been running for at least a day, so sync again tomorrow.")
     if collected.daily_total and not any(collected.daily_total.values()):
         warnings.append("The provider reports no spending on this account in the period read, so there is nothing to save yet.")
     if collected.currency != "USD":
