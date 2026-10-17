@@ -132,3 +132,30 @@ def test_without_an_encryption_key_live_accounts_are_switched_off(newcomer, monk
     assert newcomer.get("/api/cloud-accounts").json()["enabled"] is False
     response = newcomer.post("/api/cloud-accounts", json={"provider": "aws", "credentials": fake.AWS_KEYS})
     assert response.status_code == 400 and "CREDENTIALS_KEY" in response.json()["detail"]
+
+
+def test_an_organization_blocking_servers_still_imports_the_bill(newcomer, monkeypatch):
+    use_fake(monkeypatch, fake.aws_handler(block=("ec2:DescribeInstances", "ec2:DescribeVolumes")))
+    created = newcomer.post("/api/cloud-accounts", json={"provider": "aws", "credentials": fake.AWS_KEYS}).json()
+    synced = newcomer.post(f"/api/cloud-accounts/{created['id']}/sync").json()
+    assert synced["status"] == "ready" and synced["resource_count"] == 0
+    assert any("service control policy" in w and "organization" in w for w in synced["warnings"])
+    assert 26 * 30 <= newcomer.get("/api/summary").json()["last_30_days_cost"] <= 30 * 30
+    assert newcomer.get("/api/recommendations").json() == []
+
+
+def test_blocked_usage_metrics_never_look_like_idle_servers(newcomer, monkeypatch):
+    use_fake(monkeypatch, fake.aws_handler(block=("cloudwatch:GetMetricStatistics",)))
+    created = newcomer.post("/api/cloud-accounts", json={"provider": "aws", "credentials": fake.AWS_KEYS}).json()
+    synced = newcomer.post(f"/api/cloud-accounts/{created['id']}/sync").json()
+    assert synced["status"] == "ready"
+    assert any("Processor use could not be read" in w for w in synced["warnings"])
+    # Only the disk check works without processor readings; no server is wrongly called idle.
+    assert {r["kind"] for r in newcomer.get("/api/recommendations").json()} == {"unattached_storage"}
+
+
+def test_an_account_that_blocks_everything_fails_with_the_reason(newcomer, monkeypatch):
+    use_fake(monkeypatch, fake.aws_handler(block=("ec2:DescribeInstances", "ec2:DescribeVolumes", "ce:GetCostAndUsage")))
+    created = newcomer.post("/api/cloud-accounts", json={"provider": "aws", "credentials": fake.AWS_KEYS}).json()
+    synced = newcomer.post(f"/api/cloud-accounts/{created['id']}/sync").json()
+    assert synced["status"] == "error" and "service control policy" in synced["last_error"]

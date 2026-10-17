@@ -286,6 +286,16 @@ function AddAccountDialog({ open, policy, onClose, onDone }) {
               days.
             </p>
           )}
+          {stage === 'done' && account.warnings?.length > 1 && (
+            <div className="sync-notes">
+              <p>Some things could not be read:</p>
+              <ul>
+                {account.warnings.slice(1).map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {stage === 'failed' && (
             <p className="form-error" role="alert">
               The keys work, but reading the account failed: {account?.last_error}
@@ -353,8 +363,8 @@ function LiveAccount({ account, onChanged }) {
       </p>
       {account.status === 'error' && <p className="form-error">{account.last_error}</p>}
       {account.warnings?.length > 0 && (
-        <details className="notes">
-          <summary>Notes</summary>
+        <details className="notes" open={account.warnings.length > 1}>
+          <summary>{account.warnings.length > 1 ? 'Some things could not be read' : 'Notes'}</summary>
           <ul>
             {account.warnings.map((w) => (
               <li key={w}>{w}</li>

@@ -74,7 +74,17 @@ def _tags(tags: dict) -> str:
     return "<tagSet>" + "".join(f"<item><key>{k}</key><value>{v}</value></item>" for k, v in tags.items()) + "</tagSet>"
 
 
-def aws_handler(refuse: bool = False):
+SCP_DENY = (
+    "<Response><Errors><Error><Code>UnauthorizedOperation</Code><Message>You are not authorized to perform this "
+    "operation. User: arn:aws:iam::123456789012:user/cloudlens-readonly is not authorized to perform: {action} with an "
+    "explicit deny in a service control policy: arn:aws:organizations::111111111111:policy/o-x/service_control_policy/p-x"
+    "</Message></Error></Errors></Response>"
+)
+
+
+def aws_handler(refuse: bool = False, block: tuple = ()):
+    """refuse: bad keys. block: actions an organization policy denies, e.g. ("ec2:DescribeInstances",)."""
+
     def handle(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"].startswith("AWS4-HMAC-SHA256 Credential=AKIAABCDEFGHIJKLMNOP/")
         host = request.url.host
@@ -82,6 +92,8 @@ def aws_handler(refuse: bool = False):
             return httpx.Response(403, text="<Error><Code>InvalidClientTokenId</Code></Error>")
         if host == "ce.us-east-1.amazonaws.com":
             assert request.headers["x-amz-target"] == "AWSInsightsIndexService.GetCostAndUsage"
+            if "ce:GetCostAndUsage" in block:
+                return httpx.Response(400, text='{"__type":"AccessDeniedException","Message":"User is not authorized to perform: ce:GetCostAndUsage with an explicit deny in a service control policy"}')
             period = json.loads(request.content)["TimePeriod"]
             results = [
                 {"TimePeriod": {"Start": d.isoformat(), "End": (d + timedelta(days=1)).isoformat()},
@@ -92,6 +104,9 @@ def aws_handler(refuse: bool = False):
 
         form = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
         action = form["Action"]
+        prefix = "cloudwatch" if host.startswith("monitoring.") else host.split(".")[0]
+        if f"{prefix}:{action}" in block:
+            return httpx.Response(403, text=SCP_DENY.format(action=f"{prefix}:{action}"))
         if action == "GetCallerIdentity":
             return _xml("GetCallerIdentityResponse", "<GetCallerIdentityResult><Account>123456789012</Account></GetCallerIdentityResult>",
                         "https://sts.amazonaws.com/doc/2011-06-15/")

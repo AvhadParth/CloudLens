@@ -105,12 +105,53 @@ def signed_request(http: httpx.Client, credentials: dict, *, service: str, regio
     return http.request(method, f"https://{host}/", content=body.encode(), headers=headers)
 
 
+class Blocked(CloudError):
+    """AWS refused one permission. `who` says what denied it: the organization, a boundary, or the IAM policy."""
+
+    def __init__(self, action: str, who: str):
+        self.action, self.who = action, who
+        super().__init__(explain(who, [action]))
+
+
+def explain(who: str, actions: list) -> str:
+    names = " and ".join(sorted(set(actions)))
+    if who == "organization":
+        return (f"your AWS organization blocks {names} with a service control policy. This is common for college, "
+                "AWS Academy and other managed accounts, and only the organization's admin can change it")
+    if who == "boundary":
+        return f"a permissions boundary on the IAM user blocks {names}"
+    return f"the IAM user is missing {names} from the policy in the guide"
+
+
+def _check(response: httpx.Response, action: str, what: str) -> None:
+    """Like raise_for_status, but tells a missing permission apart from bad keys, and says who denied it."""
+    denied = re.search(r"UnauthorizedOperation|AccessDenied|not authorized to perform", response.text)
+    if response.status_code in (400, 403) and denied:
+        if "service control policy" in response.text:
+            raise Blocked(action, "organization")
+        if "permissions boundary" in response.text:
+            raise Blocked(action, "boundary")
+        raise Blocked(action, "policy")
+    raise_for_status(response, what)
+
+
+def _summarise(blocks: list) -> str:
+    """One sentence per kind of denial, naming every blocked permission once."""
+    by_who = {}
+    for block in blocks:
+        by_who.setdefault(block.who, []).append(block.action)
+    return "; ".join(explain(who, actions) for who, actions in by_who.items())
+
+
+SERVICE_PREFIX = {"ec2": "ec2", "monitoring": "cloudwatch", "sts": "sts"}
+
+
 def _query(http, credentials, service, region, host, params: dict, what: str) -> ET.Element:
     """Call an AWS "Query" API (form-encoded request, XML response) and return the XML root."""
     body = "&".join(f"{quote(str(k), safe='')}={quote(str(v), safe='')}" for k, v in sorted(params.items()))
     response = signed_request(http, credentials, service=service, region=region, host=host, body=body,
                               headers={"content-type": "application/x-www-form-urlencoded; charset=utf-8"})
-    raise_for_status(response, what)
+    _check(response, f"{SERVICE_PREFIX[service]}:{params['Action']}", what)
     root = ET.fromstring(response.text)
     for element in root.iter():  # drop XML namespaces so paths stay readable
         element.tag = element.tag.split("}", 1)[-1]
@@ -159,7 +200,21 @@ def _all_pages(http, credentials, region, action, what):
 
 
 def _machines_and_disks(http, credentials, region):
-    machines, disks = [], []
+    """Servers and disks in one region, plus the reasons for anything AWS refused to list."""
+    machines, disks, blocked = [], [], []
+    try:
+        machines = _machines(http, credentials, region)
+    except Blocked as block:
+        blocked.append(block)
+    try:
+        disks = _disks(http, credentials, region)
+    except Blocked as block:
+        blocked.append(block)
+    return machines, disks, blocked
+
+
+def _machines(http, credentials, region) -> list:
+    machines = []
     for page in _all_pages(http, credentials, region, "DescribeInstances", f"listing servers in {region}"):
         for item in page.findall("./reservationSet/item/instancesSet/item"):
             state = item.findtext("./instanceState/name")
@@ -176,6 +231,11 @@ def _machines_and_disks(http, credentials, region):
                 region=region, size=size, running=state == "running", tags=tags, hourly_rate=rate, vcpus=vcpus,
                 created=(item.findtext("launchTime") or "")[:10] or None,
             ))
+    return machines
+
+
+def _disks(http, credentials, region) -> list:
+    disks = []
     for page in _all_pages(http, credentials, region, "DescribeVolumes", f"listing disks in {region}"):
         for item in page.findall("./volumeSet/item"):
             tags = _tags(item)
@@ -186,7 +246,7 @@ def _machines_and_disks(http, credentials, region):
                 monthly_rate_per_gb=EBS_PER_GB_MONTH.get(item.findtext("volumeType") or "", 0.10),
                 created=(item.findtext("createTime") or "")[:10] or None,
             ))
-    return machines, disks
+    return disks
 
 
 def _cpu_hours(http, credentials, machine: Machine, start, end) -> list:
@@ -209,6 +269,8 @@ def _daily_bill(http, credentials) -> tuple[dict, str]:
     start, end = cost_window()
     try:
         return _cost_explorer(http, credentials, start, end)
+    except Blocked:
+        raise
     except CloudError:
         # Accounts without a full year of history (or that just enabled Cost Explorer) can
         # reject a 12-month range; fall back to the last 90 days rather than failing the sync.
@@ -223,7 +285,7 @@ def _cost_explorer(http, credentials, start, end) -> tuple[dict, str]:
     response = signed_request(http, credentials, service="ce", region="us-east-1", host="ce.us-east-1.amazonaws.com",
                               body=body, headers={"content-type": "application/x-amz-json-1.1",
                                                   "x-amz-target": "AWSInsightsIndexService.GetCostAndUsage"})
-    raise_for_status(response, "reading the bill from Cost Explorer")
+    _check(response, "ce:GetCostAndUsage", "reading the bill from Cost Explorer")
     totals, currency = {}, "USD"
     for day in response.json().get("ResultsByTime", []):
         cost = day["Total"]["UnblendedCost"]
@@ -233,14 +295,41 @@ def _cost_explorer(http, credentials, start, end) -> tuple[dict, str]:
 
 
 def collect(credentials: dict, http: httpx.Client) -> Collected:
+    """Read everything CloudLens can. Anything AWS refuses is skipped and explained in a warning,
+    so an account with some permissions blocked still shows what is allowed."""
     start, end = usage_window()
+    warnings = ["Memory use is not measured on AWS unless the CloudWatch agent is installed, so the memory checks are skipped."]
     regions = _regions(http, credentials)
+
+    def cpu_or_none(machine):
+        try:
+            return _cpu_hours(http, credentials, machine, start, end), None
+        except Blocked as block:
+            return None, block  # None = unknown, which is not the same as "switched off"
+
     with ThreadPoolExecutor(max_workers=12) as pool:
         found = list(pool.map(lambda region: _machines_and_disks(http, credentials, region), regions))
-        machines = [m for ms, _ in found for m in ms]
-        disks = [d for _, ds in found for d in ds]
-        for machine, hours in zip(machines, pool.map(lambda m: _cpu_hours(http, credentials, m, start, end), machines)):
+        machines = [m for ms, _, _ in found for m in ms]
+        disks = [d for _, ds, _ in found for d in ds]
+        cpu_blocked = []
+        for machine, (hours, block) in zip(machines, pool.map(cpu_or_none, machines)):
             machine.cpu_hours = hours
-    totals, currency = _daily_bill(http, credentials)
-    warnings = ["Memory use is not measured on AWS unless the CloudWatch agent is installed, so the memory checks are skipped."]
+            if block:
+                cpu_blocked.append(block)
+
+    listing_blocked = [block for _, _, blocks in found for block in blocks]
+    if listing_blocked:
+        where = "in any region" if all(blocks for _, _, blocks in found) else "in some regions"
+        warnings.append(f"CloudLens could not list servers or disks {where} because {_summarise(listing_blocked)}. "
+                        "The bill and forecast still work, but the waste checks need the list of servers.")
+    if cpu_blocked:
+        warnings.append(f"Processor use could not be read because {_summarise(cpu_blocked)}. Those servers are not checked for waste.")
+
+    try:
+        totals, currency = _daily_bill(http, credentials)
+    except Blocked as block:
+        totals, currency = {}, "USD"
+        warnings.append(f"The bill could not be read because {block}. Costs are estimated from list prices instead.")
+        if not machines and not disks:
+            raise CloudError(f"AWS would not let CloudLens read anything in this account because {_summarise([*listing_blocked, block])}.") from None
     return Collected(currency=currency, daily_total=totals, machines=machines, disks=disks, warnings=warnings)

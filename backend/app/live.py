@@ -63,7 +63,7 @@ def sync(user_id: str, account_id: str) -> dict | None:
         snapshot = build_snapshot(account, collected)
         store.save_snapshot(account_id, user_id, snapshot)
         update = {
-            "status": "ready", "last_synced_at": snapshot["synced_at"], "warnings": snapshot["warnings"],
+            "status": "ready", "last_error": None, "last_synced_at": snapshot["synced_at"], "warnings": snapshot["warnings"],
             "resource_count": snapshot["resource_count"], "monthly_cost": snapshot["monthly_cost"],
             "currency": snapshot["currency"],
         }
@@ -93,7 +93,12 @@ def build_snapshot(account: dict, collected: cloud.Collected) -> dict:
     ids = {m.native_id: _resource_id(provider, account_id, m.native_id) for m in collected.machines}
 
     for machine in collected.machines:
-        days = {d: row for d, row in cloud.daily_usage(machine.cpu_hours, start, end).items() if d < today}
+        if machine.cpu_hours is None:  # the provider refused to share processor use
+            unknown = {"cpu_avg": None, "cpu_p95": None, "cpu_business_hours": None, "cpu_off_hours": None,
+                       "hours_running": 24 if machine.running else 0}
+            days = {d: dict(unknown) for d in cloud.daily_usage([], start, end) if d < today}
+        else:
+            days = {d: row for d, row in cloud.daily_usage(machine.cpu_hours, start, end).items() if d < today}
         hours = sum(row["hours_running"] for row in days.values())
         rate = machine.hourly_rate
         if machine.daily_cost and hours:
@@ -131,6 +136,8 @@ def build_snapshot(account: dict, collected: cloud.Collected) -> dict:
     _match_real_bill(provider, account_id, collected.daily_total, resources, usage)
 
     warnings = list(collected.warnings)
+    if collected.daily_total and not any(collected.daily_total.values()):
+        warnings.append("The provider reports no spending on this account in the period read, so there is nothing to save yet.")
     if collected.currency != "USD":
         warnings.append(f"This account is billed in {collected.currency}; amounts are shown without conversion.")
     cutoff = (date.fromisoformat(today) - timedelta(days=30)).isoformat()
